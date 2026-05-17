@@ -2,13 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
-import { TrendingUp, Calendar, CheckCircle, Clock, AlertCircle } from 'lucide-react'
+import { TrendingUp, AlertCircle, Lock } from 'lucide-react'
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 
-const computeScore = (goal, actual, actualDate) => {
-  if (!actual && !actualDate) return null
+const QUARTER_PHASES = {
+  'Q1 Check-in': 'Q1',
+  'Q2 Check-in': 'Q2',
+  'Q3 Check-in': 'Q3',
+  'Q4 / Annual': 'Q4',
+}
 
+const computeScore = (goal, actual, actualDate) => {
+  if (actual === '' && !actualDate) return null
   switch (goal.uom_type) {
     case 'numeric_min':
       return goal.target ? Math.min((actual / goal.target) * 100, 100).toFixed(1) : null
@@ -18,9 +24,7 @@ const computeScore = (goal, actual, actualDate) => {
       return parseFloat(actual) === 0 ? 100 : 0
     case 'timeline':
       if (!actualDate || !goal.target_date) return null
-      const deadline = new Date(goal.target_date)
-      const completed = new Date(actualDate)
-      return completed <= deadline ? 100 : 0
+      return new Date(actualDate) <= new Date(goal.target_date) ? 100 : 0
     default:
       return null
   }
@@ -31,6 +35,7 @@ export default function CheckinDashboard() {
   const [goals, setGoals] = useState([])
   const [checkins, setCheckins] = useState({})
   const [activeQuarter, setActiveQuarter] = useState('Q1')
+  const [activeCycle, setActiveCycle] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState('')
@@ -44,6 +49,19 @@ export default function CheckinDashboard() {
   const fetchData = async () => {
     setLoading(true)
 
+    // Get active cycle
+    const { data: cycleData } = await supabase
+      .from('goal_cycles')
+      .select('*')
+      .eq('is_active', true)
+      .single()
+    setActiveCycle(cycleData)
+
+    // Auto-select quarter based on active cycle
+    if (cycleData && QUARTER_PHASES[cycleData.phase]) {
+      setActiveQuarter(QUARTER_PHASES[cycleData.phase])
+    }
+
     // Get approved goals
     const { data: goalsData } = await supabase
       .from('goals')
@@ -53,7 +71,6 @@ export default function CheckinDashboard() {
 
     setGoals(goalsData || [])
 
-    // Get all checkins for these goals
     if (goalsData && goalsData.length > 0) {
       const goalIds = goalsData.map(g => g.id)
       const { data: checkinData } = await supabase
@@ -61,21 +78,19 @@ export default function CheckinDashboard() {
         .select('*')
         .in('goal_id', goalIds)
 
-      // Map checkins by goal_id + quarter
       const mapped = {}
       checkinData?.forEach(c => {
         mapped[`${c.goal_id}_${c.quarter}`] = c
       })
       setCheckins(mapped)
 
-      // Set initial inputs from existing checkins
       const initialInputs = {}
       goalsData.forEach(goal => {
         QUARTERS.forEach(q => {
           const key = `${goal.id}_${q}`
           const existing = mapped[key]
           initialInputs[key] = {
-            actual_achievement: existing?.actual_achievement || '',
+            actual_achievement: existing?.actual_achievement ?? '',
             actual_date: existing?.actual_date || '',
             progress_status: existing?.progress_status || 'not_started',
           }
@@ -87,6 +102,20 @@ export default function CheckinDashboard() {
     setLoading(false)
   }
 
+  // Check if a quarter is open for check-in
+  const isQuarterOpen = (quarter) => {
+    if (!activeCycle) return false
+    const today = new Date()
+    const windowOpen = new Date(activeCycle.window_open)
+    const windowClose = new Date(activeCycle.window_close)
+    const inWindow = today >= windowOpen && today <= windowClose
+    const cycleQuarter = QUARTER_PHASES[activeCycle.phase]
+    return inWindow && cycleQuarter === quarter
+  }
+
+  // Goal setting phase — no check-ins allowed yet
+  const isGoalSettingPhase = activeCycle?.phase === 'Goal Setting'
+
   const updateInput = (goalId, quarter, field, value) => {
     const key = `${goalId}_${quarter}`
     setInputs(prev => ({
@@ -96,6 +125,11 @@ export default function CheckinDashboard() {
   }
 
   const handleSave = async () => {
+    if (!isQuarterOpen(activeQuarter)) {
+      setError(`Check-in window for ${activeQuarter} is not currently open.`)
+      return
+    }
+
     setSaving(true)
     setError('')
     setSuccess('')
@@ -114,7 +148,7 @@ export default function CheckinDashboard() {
       const payload = {
         goal_id: goal.id,
         quarter: activeQuarter,
-        actual_achievement: input.actual_achievement ? parseFloat(input.actual_achievement) : null,
+        actual_achievement: input.actual_achievement !== '' ? parseFloat(input.actual_achievement) : null,
         actual_date: input.actual_date || null,
         progress_status: input.progress_status,
         progress_score: score,
@@ -123,14 +157,9 @@ export default function CheckinDashboard() {
 
       const existing = checkins[key]
       if (existing) {
-        await supabase
-          .from('quarterly_checkins')
-          .update(payload)
-          .eq('id', existing.id)
+        await supabase.from('quarterly_checkins').update(payload).eq('id', existing.id)
       } else {
-        await supabase
-          .from('quarterly_checkins')
-          .insert(payload)
+        await supabase.from('quarterly_checkins').insert(payload)
       }
     }
 
@@ -146,12 +175,6 @@ export default function CheckinDashboard() {
     return 'text-red-500'
   }
 
-  const getStatusIcon = (status) => {
-    if (status === 'completed') return <CheckCircle size={16} className="text-green-500" />
-    if (status === 'on_track') return <TrendingUp size={16} className="text-blue-500" />
-    return <Clock size={16} className="text-gray-400" />
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -162,9 +185,29 @@ export default function CheckinDashboard() {
           <p className="text-gray-500 text-sm mt-1">Log your actual achievements against planned targets</p>
         </div>
 
+        {/* Active cycle info */}
+        {activeCycle && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-indigo-700">
+                Active Cycle: {activeCycle.name} — {activeCycle.phase}
+              </p>
+              <p className="text-xs text-indigo-500 mt-0.5">
+                Window: {new Date(activeCycle.window_open).toLocaleDateString()} → {new Date(activeCycle.window_close).toLocaleDateString()}
+              </p>
+            </div>
+            {isGoalSettingPhase && (
+              <span className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-medium">
+                Goal setting phase — check-ins not yet open
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Quarter Selector */}
         <div className="flex gap-2 mb-6">
           {QUARTERS.map(q => {
+            const open = isQuarterOpen(q)
             const hasData = goals.some(g => checkins[`${g.id}_${q}`])
             return (
               <button
@@ -173,17 +216,39 @@ export default function CheckinDashboard() {
                 className={`px-5 py-2 rounded-xl font-medium text-sm transition relative ${
                   activeQuarter === q
                     ? 'bg-indigo-600 text-white'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:border-indigo-300'
+                    : open
+                    ? 'bg-white border-2 border-indigo-400 text-indigo-700'
+                    : 'bg-white border border-gray-200 text-gray-400'
                 }`}
               >
                 {q}
-                {hasData && (
+                {open && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-400 rounded-full border border-white" />
+                )}
+                {hasData && !open && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-400 rounded-full border border-white" />
                 )}
               </button>
             )
           })}
         </div>
+
+        {/* Window closed warning */}
+        {!isQuarterOpen(activeQuarter) && !loading && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
+            <Lock size={18} className="text-yellow-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-yellow-700">
+                {activeQuarter} check-in window is not currently open
+              </p>
+              <p className="text-xs text-yellow-600 mt-1">
+                {activeCycle
+                  ? `Current active phase is "${activeCycle.phase}". You can view past entries but cannot save new ones.`
+                  : 'No active cycle found. Contact your Admin.'}
+              </p>
+            </div>
+          </div>
+        )}
 
         {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 rounded-xl text-sm">{success}</div>}
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{error}</div>}
@@ -194,7 +259,7 @@ export default function CheckinDashboard() {
           <div className="text-center py-12">
             <AlertCircle size={48} className="mx-auto text-gray-300 mb-3" />
             <p className="text-gray-500">No approved goals found.</p>
-            <p className="text-gray-400 text-sm">Goals must be approved by your manager before check-ins.</p>
+            <p className="text-gray-400 text-sm mt-1">Goals must be approved by your manager first.</p>
           </div>
         ) : (
           <>
@@ -203,6 +268,8 @@ export default function CheckinDashboard() {
                 const key = `${goal.id}_${activeQuarter}`
                 const input = inputs[key] || {}
                 const existing = checkins[key]
+                const isOpen = isQuarterOpen(activeQuarter)
+
                 const score = computeScore(
                   goal,
                   parseFloat(input.actual_achievement),
@@ -212,8 +279,6 @@ export default function CheckinDashboard() {
 
                 return (
                   <div key={goal.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-
-                    {/* Goal Header */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -221,6 +286,11 @@ export default function CheckinDashboard() {
                             {goal.thrust_area}
                           </span>
                           <span className="text-xs text-gray-400">{goal.weightage}% weightage</span>
+                          {goal.is_shared && (
+                            <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">
+                              📌 Shared
+                            </span>
+                          )}
                         </div>
                         <h3 className="font-semibold text-gray-800">{goal.title}</h3>
                       </div>
@@ -233,8 +303,8 @@ export default function CheckinDashboard() {
                     </div>
 
                     {/* Planned Target */}
-                    <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
-                      <span className="text-gray-500">Planned Target: </span>
+                    <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm flex items-center gap-4">
+                      <span className="text-gray-500">Planned Target:</span>
                       <strong className="text-gray-700">
                         {goal.uom_type === 'timeline'
                           ? goal.target_date
@@ -242,7 +312,7 @@ export default function CheckinDashboard() {
                           ? '0 incidents'
                           : goal.target}
                       </strong>
-                      <span className="ml-3 text-gray-400">
+                      <span className="text-gray-400 text-xs">
                         ({goal.uom_type === 'numeric_min' ? 'Higher is better'
                           : goal.uom_type === 'numeric_max' ? 'Lower is better'
                           : goal.uom_type === 'timeline' ? 'Complete by date'
@@ -252,8 +322,6 @@ export default function CheckinDashboard() {
 
                     {/* Input Fields */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                      {/* Actual Achievement */}
                       {goal.uom_type !== 'zero' && (
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -264,41 +332,43 @@ export default function CheckinDashboard() {
                               type="date"
                               value={input.actual_date || ''}
                               onChange={e => updateInput(goal.id, activeQuarter, 'actual_date', e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                              disabled={!isOpen}
+                              className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${!isOpen ? 'bg-gray-50 text-gray-400' : ''}`}
                             />
                           ) : (
                             <input
                               type="number"
-                              value={input.actual_achievement || ''}
+                              value={input.actual_achievement ?? ''}
                               onChange={e => updateInput(goal.id, activeQuarter, 'actual_achievement', e.target.value)}
+                              disabled={!isOpen}
                               placeholder={`Target: ${goal.target}`}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                              className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${!isOpen ? 'bg-gray-50 text-gray-400' : ''}`}
                             />
                           )}
                         </div>
                       )}
 
-                      {/* Zero based input */}
                       {goal.uom_type === 'zero' && (
                         <div>
                           <label className="block text-xs font-medium text-gray-600 mb-1">Actual Count</label>
                           <input
                             type="number"
-                            value={input.actual_achievement || ''}
+                            value={input.actual_achievement ?? ''}
                             onChange={e => updateInput(goal.id, activeQuarter, 'actual_achievement', e.target.value)}
+                            disabled={!isOpen}
                             placeholder="Enter 0 if successful"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                            className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${!isOpen ? 'bg-gray-50 text-gray-400' : ''}`}
                           />
                         </div>
                       )}
 
-                      {/* Status */}
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
                         <select
                           value={input.progress_status || 'not_started'}
                           onChange={e => updateInput(goal.id, activeQuarter, 'progress_status', e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                          disabled={!isOpen}
+                          className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 ${!isOpen ? 'bg-gray-50 text-gray-400' : ''}`}
                         >
                           <option value="not_started">Not Started</option>
                           <option value="on_track">On Track</option>
@@ -306,7 +376,6 @@ export default function CheckinDashboard() {
                         </select>
                       </div>
 
-                      {/* Progress Bar */}
                       {score !== null && (
                         <div className="flex items-end">
                           <div className="w-full">
@@ -327,7 +396,6 @@ export default function CheckinDashboard() {
                       )}
                     </div>
 
-                    {/* Manager Comment */}
                     {managerComment && (
                       <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
                         <p className="text-blue-600 font-medium text-xs mb-1">Manager Feedback</p>
@@ -339,14 +407,20 @@ export default function CheckinDashboard() {
               })}
             </div>
 
-            {/* Save Button */}
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-medium transition"
-            >
-              {saving ? 'Saving...' : `Save ${activeQuarter} Check-in`}
-            </button>
+            {isQuarterOpen(activeQuarter) ? (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-medium transition"
+              >
+                {saving ? 'Saving...' : `Save ${activeQuarter} Check-in`}
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <Lock size={16} />
+                <span>Check-in window is closed. Entries are view-only.</span>
+              </div>
+            )}
           </>
         )}
       </div>

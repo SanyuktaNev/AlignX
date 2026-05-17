@@ -33,6 +33,67 @@ const emptyGoal = {
   weightage: '',
 }
 
+const SharedWeightageEditor = ({ goal, onUpdate }) => {
+  const [editing, setEditing] = useState(false)
+  const [newWeightage, setNewWeightage] = useState(goal.weightage)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const handleSave = async () => {
+    const w = parseFloat(newWeightage)
+    if (!w || w < 10) { setMsg('Minimum weightage is 10%.'); return }
+    if (w > 100) { setMsg('Maximum weightage is 100%.'); return }
+    setSaving(true)
+    await supabase
+      .from('goals')
+      .update({ weightage: w, updated_at: new Date().toISOString() })
+      .eq('id', goal.id)
+    setMsg('Weightage updated!')
+    setEditing(false)
+    onUpdate()
+    setSaving(false)
+  }
+
+  return (
+    <div className="mt-2">
+      {!editing ? (
+        <button
+          onClick={() => { setEditing(true); setMsg('') }}
+          className="text-xs text-purple-600 hover:text-purple-800 underline"
+        >
+          Adjust my weightage for this shared goal
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 mt-1">
+          <input
+            type="number"
+            value={newWeightage}
+            onChange={e => setNewWeightage(e.target.value)}
+            min="10"
+            max="100"
+            className="w-24 border border-purple-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+          <span className="text-xs text-gray-500">%</span>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg transition"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setMsg('') }}
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {msg && <p className="text-xs text-purple-600 mt-1">{msg}</p>}
+    </div>
+  )
+}
+
 // ── GoalFormFields MUST be outside EmployeeDashboard to prevent focus loss ──
 const GoalFormFields = ({ goal, index, updateFn, isRework, onRemove, totalRows }) => (
   <div className={`border rounded-xl p-4 bg-gray-50 ${isRework ? 'border-red-100' : 'border-gray-200'}`}>
@@ -551,10 +612,8 @@ export default function EmployeeDashboard() {
                       <p className="text-sm text-gray-500 mt-1">{goal.description}</p>
                     )}
                     {goal.is_shared && (
-                      <p className="text-xs text-purple-500 mt-1">
-                        Title and target are fixed. You may only adjust weightage with manager approval.
-                      </p>
-                    )}
+                      <SharedWeightageEditor goal={goal} onUpdate={fetchData} />
+                      )}
                   </div>
                   <div className="text-right ml-4">
                     <p className="text-2xl font-bold text-indigo-600">{goal.weightage}%</p>
