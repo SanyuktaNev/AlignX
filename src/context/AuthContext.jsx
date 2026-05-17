@@ -8,35 +8,34 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const saved = localStorage.getItem('demo_user')
+    const saved = localStorage.getItem('alignx_user')
     if (saved) {
       setProfile(JSON.parse(saved))
     }
     setLoading(false)
   }, [])
 
-  const login = async (email) => {
-    console.log('Trying to login with:', email)
+  const login = async (email, password) => {
+    if (!email || !password) throw new Error('Please enter email and password.')
 
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('email', email.trim().toLowerCase())
+      .eq('password', password)
 
-    console.log('Supabase response:', data, error)
-
-    if (error) throw new Error('Database error: ' + error.message)
-    if (!data || data.length === 0) throw new Error('User not found — check if seed data exists')
+    if (error) throw new Error('Something went wrong. Try again.')
+    if (!data || data.length === 0) throw new Error('Invalid email or password.')
 
     const user = data[0]
     setProfile(user)
-    localStorage.setItem('demo_user', JSON.stringify(user))
+    localStorage.setItem('alignx_user', JSON.stringify(user))
     return user
   }
 
   const logout = () => {
     setProfile(null)
-    localStorage.removeItem('demo_user')
+    localStorage.removeItem('alignx_user')
   }
 
   return (
