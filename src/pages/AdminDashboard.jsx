@@ -190,6 +190,15 @@ export default function AdminDashboard() {
     }
   })
 
+  const tabs = [
+    { id: 'overview', label: 'Overview', icon: <Activity size={15} /> },
+    { id: 'users', label: 'Manage Users', icon: <Users size={15} /> },
+    { id: 'cycles', label: 'Goal Cycles', icon: <Settings size={15} /> },
+    { id: 'goals', label: 'All Goals', icon: <ClipboardList size={15} /> },
+    { id: 'audit', label: 'Audit Log', icon: <Lock size={15} /> },
+    { id: 'report', label: 'Export Report', icon: <Download size={15} /> },
+  ]
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -207,14 +216,7 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6">
-          {[
-            { id: 'overview', label: 'Overview', icon: <Activity size={15} /> },
-            { id: 'users', label: 'Manage Users', icon: <Users size={15} /> },
-            { id: 'cycles', label: 'Goal Cycles', icon: <Settings size={15} /> },
-            { id: 'goals', label: 'All Goals', icon: <ClipboardList size={15} /> },
-            { id: 'audit', label: 'Audit Log', icon: <Lock size={15} /> },
-            { id: 'report', label: 'Export Report', icon: <Download size={15} /> },
-          ].map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => {
@@ -244,6 +246,66 @@ export default function AdminDashboard() {
             {error}
           </div>
         )}
+
+        {/* USERS TAB */}
+        {activeTab === 'users' && (
+          <div className="space-y-6">
+            {/* Add New User */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-4">Add New User</h3>
+              <AddUserForm onSuccess={() => { setSuccess('User added!'); fetchAll() }} users={users} />
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800">Organisation Hierarchy</h3>
+                <span className="text-xs text-gray-400">{users.length} users total</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      {['Name', 'Email', 'Role', 'Department', 'Reports To', 'Password', 'Action'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {users.map(user => {
+                      const manager = users.find(u => u.id === user.manager_id)
+                      return (
+                        <tr key={user.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-800">{user.name}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{user.email}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              user.role === 'admin' ? 'bg-purple-100 text-purple-700'
+                              : user.role === 'manager' ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-600'
+                            }`}>
+                              {user.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">{user.department || '—'}</td>
+                          <td className="px-4 py-3 text-gray-500">{manager?.name || '—'}</td>
+                          <td className="px-4 py-3 text-gray-400 text-xs font-mono">{user.password || '—'}</td>
+                          <td className="px-4 py-3">
+                            <DeleteUserButton
+                              user={user}
+                              goals={goals}
+                              onSuccess={() => { setSuccess('User removed.'); fetchAll() }}
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -251,76 +313,110 @@ export default function AdminDashboard() {
 
 function AddUserForm({ onSuccess, users }) {
   const [form, setForm] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'employee',
-    department: '',
-    manager_id: ''
+    name: '', email: '', password: '', role: 'employee', department: '', manager_id: ''
   })
-
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const managers = users.filter(
-    u => u.role === 'manager' || u.role === 'admin'
-  )
+  const managers = users.filter(u => u.role === 'manager' || u.role === 'admin')
 
   const handleAdd = async () => {
     setError('')
-
     if (!form.name || !form.email || !form.password || !form.role) {
       setError('Name, email, password and role are required.')
       return
     }
-
-    const emailExists = users.find(
-      u => u.email === form.email.trim().toLowerCase()
-    )
-
-    if (emailExists) {
-      setError('Email already exists.')
-      return
-    }
+    const emailExists = users.find(u => u.email === form.email.trim().toLowerCase())
+    if (emailExists) { setError('Email already exists.'); return }
 
     setSaving(true)
-
-    const { error: insertError } = await supabase
-      .from('users')
-      .insert({
-        name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
-        password: form.password,
-        role: form.role,
-        department: form.department || null,
-        manager_id: form.manager_id || null,
-      })
-
-    if (insertError) {
-      setError(insertError.message)
-      setSaving(false)
-      return
-    }
-
-    setForm({
-      name: '',
-      email: '',
-      password: '',
-      role: 'employee',
-      department: '',
-      manager_id: ''
+    const { error: insertError } = await supabase.from('users').insert({
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      password: form.password,
+      role: form.role,
+      department: form.department || null,
+      manager_id: form.manager_id || null,
     })
 
+    if (insertError) { setError(insertError.message); setSaving(false); return }
+    setForm({ name: '', email: '', password: '', role: 'employee', department: '', manager_id: '' })
     onSuccess()
     setSaving(false)
   }
 
   return (
     <div>
-      {error && (
-        <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">
-          {error}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Full Name *</label>
+          <input
+            type="text"
+            value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            placeholder="e.g. Amit Shah"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
+            placeholder="amit@company.com"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Password *</label>
+          <input
+            type="text"
+            value={form.password}
+            onChange={e => setForm({ ...form, password: e.target.value })}
+            placeholder="e.g. amit123"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Role *</label>
+          <select
+            value={form.role}
+            onChange={e => setForm({ ...form, role: e.target.value })}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          >
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+          <input
+            type="text"
+            value={form.department}
+            onChange={e => setForm({ ...form, department: e.target.value })}
+            placeholder="e.g. Marketing"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Reports To (Manager)</label>
+          <select
+            value={form.manager_id}
+            onChange={e => setForm({ ...form, manager_id: e.target.value })}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          >
+            <option value="">— None —</option>
+            {managers.map(m => (
+              <option key={m.id} value={m.id}>{m.name} ({m.role})</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{error}</div>
       )}
 
       <button
@@ -342,22 +438,13 @@ function DeleteUserButton({ user, goals, onSuccess }) {
 
   const handleDelete = async () => {
     setDeleting(true)
-
-    await supabase
-      .from('users')
-      .delete()
-      .eq('id', user.id)
-
+    await supabase.from('users').delete().eq('id', user.id)
     onSuccess()
     setDeleting(false)
   }
 
   if (hasGoals) {
-    return (
-      <span className="text-xs text-gray-300">
-        Has goals
-      </span>
-    )
+    return <span className="text-xs text-gray-300">Has goals</span>
   }
 
   if (confirming) {
@@ -370,7 +457,6 @@ function DeleteUserButton({ user, goals, onSuccess }) {
         >
           {deleting ? '...' : 'Yes'}
         </button>
-
         <button
           onClick={() => setConfirming(false)}
           className="text-xs border border-gray-300 px-2 py-1 rounded-lg text-gray-500"
