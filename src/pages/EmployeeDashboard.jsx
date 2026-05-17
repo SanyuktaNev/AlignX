@@ -33,6 +33,109 @@ const emptyGoal = {
   weightage: '',
 }
 
+// ── GoalFormFields MUST be outside EmployeeDashboard to prevent focus loss ──
+const GoalFormFields = ({ goal, index, updateFn, isRework, onRemove, totalRows }) => (
+  <div className={`border rounded-xl p-4 bg-gray-50 ${isRework ? 'border-red-100' : 'border-gray-200'}`}>
+    <div className="flex items-center justify-between mb-4">
+      <span className="font-medium text-indigo-700 text-sm">Goal {index + 1}</span>
+      {!isRework && totalRows > 1 && (
+        <button
+          onClick={() => onRemove(index)}
+          className="text-red-400 hover:text-red-600"
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Thrust Area *</label>
+        <select
+          value={goal.thrust_area}
+          onChange={e => updateFn(index, 'thrust_area', e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        >
+          <option value="">Select Thrust Area</option>
+          {THRUST_AREAS.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Unit of Measurement *</label>
+        <select
+          value={goal.uom_type}
+          onChange={e => updateFn(index, 'uom_type', e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        >
+          <option value="">Select UoM Type</option>
+          {UOM_TYPES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
+        </select>
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">Goal Title *</label>
+        <input
+          type="text"
+          value={goal.title}
+          onChange={e => updateFn(index, 'title', e.target.value)}
+          placeholder="e.g. Achieve ₹50L in Q1 Sales Revenue"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+
+      <div className="md:col-span-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+        <textarea
+          value={goal.description}
+          onChange={e => updateFn(index, 'description', e.target.value)}
+          placeholder="Additional details about this goal..."
+          rows={2}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+
+      {goal.uom_type && goal.uom_type !== 'zero' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            {goal.uom_type === 'timeline' ? 'Target Date *' : 'Target Value *'}
+          </label>
+          {goal.uom_type === 'timeline' ? (
+            <input
+              type="date"
+              value={goal.target_date}
+              onChange={e => updateFn(index, 'target_date', e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          ) : (
+            <input
+              type="number"
+              value={goal.target}
+              onChange={e => updateFn(index, 'target', e.target.value)}
+              placeholder="e.g. 5000000"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          )}
+        </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Weightage % * (min 10%)</label>
+        <input
+          type="number"
+          value={goal.weightage}
+          onChange={e => updateFn(index, 'weightage', e.target.value)}
+          placeholder="e.g. 30"
+          min="10"
+          max="100"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+    </div>
+  </div>
+)
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function EmployeeDashboard() {
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -93,6 +196,9 @@ export default function EmployeeDashboard() {
       if (approvalData && approvalData[0]?.comment) {
         setManagerComment(approvalData[0].comment)
       }
+    } else {
+      setReworkGoals([])
+      setManagerComment('')
     }
 
     setLoading(false)
@@ -112,16 +218,20 @@ export default function EmployeeDashboard() {
   }
 
   const updateGoalRow = (index, field, value) => {
-    const updated = [...goalRows]
-    updated[index][field] = value
-    setGoalRows(updated)
+    setGoalRows(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], [field]: value }
+      return updated
+    })
     setError('')
   }
 
   const updateReworkGoal = (index, field, value) => {
-    const updated = [...reworkGoals]
-    updated[index][field] = value
-    setReworkGoals(updated)
+    setReworkGoals(prev => {
+      const updated = [...prev]
+      updated[index] = { ...updated[index], [field]: value }
+      return updated
+    })
     setError('')
   }
 
@@ -230,104 +340,6 @@ export default function EmployeeDashboard() {
 
   const hasRework = reworkGoals.length > 0
 
-  const GoalFormFields = ({ goal, index, updateFn, isRework }) => (
-    <div className={`border rounded-xl p-4 bg-gray-50 ${isRework ? 'border-red-100' : 'border-gray-200'}`}>
-      <div className="flex items-center justify-between mb-4">
-        <span className="font-medium text-indigo-700 text-sm">Goal {index + 1}</span>
-        {!isRework && goalRows.length > 1 && (
-          <button onClick={() => removeGoalRow(index)} className="text-red-400 hover:text-red-600">
-            <Trash2 size={16} />
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Thrust Area *</label>
-          <select
-            value={goal.thrust_area}
-            onChange={e => updateFn(index, 'thrust_area', e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          >
-            <option value="">Select Thrust Area</option>
-            {THRUST_AREAS.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Unit of Measurement *</label>
-          <select
-            value={goal.uom_type}
-            onChange={e => updateFn(index, 'uom_type', e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          >
-            <option value="">Select UoM Type</option>
-            {UOM_TYPES.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
-          </select>
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Goal Title *</label>
-          <input
-            type="text"
-            value={goal.title}
-            onChange={e => updateFn(index, 'title', e.target.value)}
-            placeholder="e.g. Achieve ₹50L in Q1 Sales Revenue"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-          <textarea
-            value={goal.description}
-            onChange={e => updateFn(index, 'description', e.target.value)}
-            placeholder="Additional details about this goal..."
-            rows={2}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-        </div>
-
-        {goal.uom_type && goal.uom_type !== 'zero' && (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              {goal.uom_type === 'timeline' ? 'Target Date *' : 'Target Value *'}
-            </label>
-            {goal.uom_type === 'timeline' ? (
-              <input
-                type="date"
-                value={goal.target_date}
-                onChange={e => updateFn(index, 'target_date', e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            ) : (
-              <input
-                type="number"
-                value={goal.target}
-                onChange={e => updateFn(index, 'target', e.target.value)}
-                placeholder="e.g. 5000000"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-            )}
-          </div>
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Weightage % * (min 10%)</label>
-          <input
-            type="number"
-            value={goal.weightage}
-            onChange={e => updateFn(index, 'weightage', e.target.value)}
-            placeholder="e.g. 30"
-            min="10"
-            max="100"
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          />
-        </div>
-      </div>
-    </div>
-  )
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -381,8 +393,12 @@ export default function EmployeeDashboard() {
           </div>
         </div>
 
-        {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{error}</div>}
-        {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 rounded-xl text-sm">{success}</div>}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{error}</div>
+        )}
+        {success && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 rounded-xl text-sm">{success}</div>
+        )}
 
         {/* REWORK FORM */}
         {reworkMode && (
@@ -394,14 +410,16 @@ export default function EmployeeDashboard() {
                   ? 'bg-green-100 text-green-700'
                   : 'bg-orange-100 text-orange-600'
               }`}>
-                Total: {reworkTotalWeightage}% {Math.round(reworkTotalWeightage) === 100 ? '✓' : '(must be 100%)'}
+                Total: {reworkTotalWeightage}%{Math.round(reworkTotalWeightage) === 100 ? ' ✓' : ' (must be 100%)'}
               </div>
             </div>
+
             {managerComment && (
               <p className="text-sm text-red-500 mb-4 bg-red-50 px-3 py-2 rounded-lg">
                 Manager feedback: <strong>"{managerComment}"</strong>
               </p>
             )}
+
             <div className="space-y-6">
               {reworkGoals.map((goal, index) => (
                 <GoalFormFields
@@ -410,9 +428,12 @@ export default function EmployeeDashboard() {
                   index={index}
                   updateFn={updateReworkGoal}
                   isRework={true}
+                  onRemove={() => {}}
+                  totalRows={reworkGoals.length}
                 />
               ))}
             </div>
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleReworkSubmit}
@@ -441,9 +462,10 @@ export default function EmployeeDashboard() {
                   ? 'bg-green-100 text-green-700'
                   : 'bg-orange-100 text-orange-600'
               }`}>
-                Total Weightage: {totalWeightage}% {Math.round(totalWeightage) === 100 ? '✓' : '(must be 100%)'}
+                Total Weightage: {totalWeightage}%{Math.round(totalWeightage) === 100 ? ' ✓' : ' (must be 100%)'}
               </div>
             </div>
+
             <div className="space-y-6">
               {goalRows.map((goal, index) => (
                 <GoalFormFields
@@ -452,9 +474,12 @@ export default function EmployeeDashboard() {
                   index={index}
                   updateFn={updateGoalRow}
                   isRework={false}
+                  onRemove={removeGoalRow}
+                  totalRows={goalRows.length}
                 />
               ))}
             </div>
+
             {goalRows.length < 8 && (
               <button
                 onClick={addGoalRow}
@@ -463,6 +488,7 @@ export default function EmployeeDashboard() {
                 <Plus size={16} /> Add Another Goal ({goalRows.length}/8)
               </button>
             )}
+
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleSubmit}
@@ -492,13 +518,16 @@ export default function EmployeeDashboard() {
         ) : (
           <div className="space-y-4">
             {goals.map(goal => (
-              <div key={goal.id} className={`bg-white rounded-xl border p-5 shadow-sm ${
-                goal.status === 'rework'
-                  ? 'border-red-200'
-                  : goal.is_shared
-                  ? 'border-purple-200'
-                  : 'border-gray-200'
-              }`}>
+              <div
+                key={goal.id}
+                className={`bg-white rounded-xl border p-5 shadow-sm ${
+                  goal.status === 'rework'
+                    ? 'border-red-200'
+                    : goal.is_shared
+                    ? 'border-purple-200'
+                    : 'border-gray-200'
+                }`}
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -532,7 +561,7 @@ export default function EmployeeDashboard() {
                     <p className="text-xs text-gray-400">weightage</p>
                   </div>
                 </div>
-                <div className="mt-3 pt-3 border-t border-gray-100 flex gap-4 text-sm text-gray-500">
+                <div className="mt-3 pt-3 border-t border-gray-100 flex gap-4 text-sm text-gray-500 flex-wrap">
                   <span>UoM: <strong className="text-gray-700">
                     {UOM_TYPES.find(u => u.value === goal.uom_type)?.label?.split('(')[0]}
                   </strong></span>
