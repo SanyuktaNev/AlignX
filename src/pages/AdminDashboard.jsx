@@ -95,28 +95,15 @@ export default function AdminDashboard() {
   }
 
   const handleCreateCycle = async () => {
-    if (
-      !newCycle.name ||
-      !newCycle.phase ||
-      !newCycle.window_open ||
-      !newCycle.window_close
-    ) {
+    if (!newCycle.name || !newCycle.phase || !newCycle.window_open || !newCycle.window_close) {
       setError('Fill in all cycle fields.')
       return
     }
 
-    await supabase
-      .from('goal_cycles')
-      .insert({ ...newCycle, is_active: false })
+    await supabase.from('goal_cycles').insert({ ...newCycle, is_active: false })
 
     setSuccess('Cycle created!')
-    setNewCycle({
-      name: '',
-      phase: '',
-      window_open: '',
-      window_close: ''
-    })
-
+    setNewCycle({ name: '', phase: '', window_open: '', window_close: '' })
     fetchAll()
   }
 
@@ -139,12 +126,7 @@ export default function AdminDashboard() {
 
       QUARTERS.forEach(q => {
         const checkin = goalCheckins.find(c => c.quarter === q)
-
-        row[`${q} Actual`] =
-          checkin?.actual_achievement ??
-          checkin?.actual_date ??
-          '—'
-
+        row[`${q} Actual`] = checkin?.actual_achievement ?? checkin?.actual_date ?? '—'
         row[`${q} Score %`] = checkin?.progress_score ?? '—'
         row[`${q} Status`] = checkin?.progress_status || '—'
       })
@@ -154,7 +136,6 @@ export default function AdminDashboard() {
 
     const ws = XLSX.utils.json_to_sheet(exportData)
     const wb = XLSX.utils.book_new()
-
     XLSX.utils.book_append_sheet(wb, ws, 'Achievement Report')
     XLSX.writeFile(wb, 'achievement_report.xlsx')
   }
@@ -166,28 +147,13 @@ export default function AdminDashboard() {
 
   const checkinCompletion = QUARTERS.map(q => {
     const employeesWithApprovedGoals = [
-      ...new Set(
-        goals
-          .filter(g => g.status === 'approved')
-          .map(g => g.employee_id)
-      )
+      ...new Set(goals.filter(g => g.status === 'approved').map(g => g.employee_id))
     ]
-
     const completed = employeesWithApprovedGoals.filter(empId => {
-      const empGoals = goals.filter(
-        g => g.employee_id === empId && g.status === 'approved'
-      )
-
-      return empGoals.some(g =>
-        checkins.find(c => c.goal_id === g.id && c.quarter === q)
-      )
+      const empGoals = goals.filter(g => g.employee_id === empId && g.status === 'approved')
+      return empGoals.some(g => checkins.find(c => c.goal_id === g.id && c.quarter === q))
     })
-
-    return {
-      quarter: q,
-      completed: completed.length,
-      total: employeesWithApprovedGoals.length,
-    }
+    return { quarter: q, completed: completed.length, total: employeesWithApprovedGoals.length }
   })
 
   const tabs = [
@@ -205,13 +171,8 @@ export default function AdminDashboard() {
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">
-            Admin Dashboard
-          </h1>
-
-          <p className="text-gray-500 text-sm mt-1">
-            Manage cycles, goals, users and reports
-          </p>
+          <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage cycles, goals, users and reports</p>
         </div>
 
         {/* Tabs */}
@@ -219,11 +180,7 @@ export default function AdminDashboard() {
           {tabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id)
-                setSuccess('')
-                setError('')
-              }}
+              onClick={() => { setActiveTab(tab.id); setSuccess(''); setError('') }}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-sm transition ${
                 activeTab === tab.id
                   ? 'bg-indigo-600 text-white'
@@ -236,27 +193,57 @@ export default function AdminDashboard() {
         </div>
 
         {success && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 rounded-xl text-sm">
-            {success}
-          </div>
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-600 rounded-xl text-sm">{success}</div>
+        )}
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{error}</div>
         )}
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">
-            {error}
+        {/* OVERVIEW TAB */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Total Employees', value: totalEmployees },
+                { label: 'Total Goals', value: totalGoals },
+                { label: 'Approved Goals', value: approvedGoals },
+                { label: 'Pending Approval', value: pendingGoals },
+              ].map(stat => (
+                <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                  <p className="text-xs text-gray-500 mb-1">{stat.label}</p>
+                  <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-4">Check-in Completion by Quarter</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {checkinCompletion.map(({ quarter, completed, total }) => (
+                  <div key={quarter} className="text-center">
+                    <p className="text-xs text-gray-500 mb-1">{quarter}</p>
+                    <p className="text-lg font-bold text-indigo-600">{completed} / {total}</p>
+                    <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full"
+                        style={{ width: total > 0 ? `${(completed / total) * 100}%` : '0%' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
         {/* USERS TAB */}
         {activeTab === 'users' && (
           <div className="space-y-6">
-            {/* Add New User */}
             <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
               <h3 className="font-semibold text-gray-800 mb-4">Add New User</h3>
               <AddUserForm onSuccess={() => { setSuccess('User added!'); fetchAll() }} users={users} />
             </div>
 
-            {/* Users Table */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
               <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="font-semibold text-gray-800">Organisation Hierarchy</h3>
@@ -306,6 +293,274 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* CYCLES TAB */}
+        {activeTab === 'cycles' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-4">Create New Cycle</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Cycle Name *</label>
+                  <input
+                    type="text"
+                    value={newCycle.name}
+                    onChange={e => setNewCycle({ ...newCycle, name: e.target.value })}
+                    placeholder="e.g. FY 2025-26"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phase *</label>
+                  <select
+                    value={newCycle.phase}
+                    onChange={e => setNewCycle({ ...newCycle, phase: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  >
+                    <option value="">— Select Phase —</option>
+                    <option value="goal_setting">Goal Setting</option>
+                    <option value="Q1">Q1 Check-in</option>
+                    <option value="Q2">Q2 Check-in</option>
+                    <option value="Q3">Q3 Check-in</option>
+                    <option value="Q4">Q4 / Annual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Window Opens *</label>
+                  <input
+                    type="date"
+                    value={newCycle.window_open}
+                    onChange={e => setNewCycle({ ...newCycle, window_open: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Window Closes *</label>
+                  <input
+                    type="date"
+                    value={newCycle.window_close}
+                    onChange={e => setNewCycle({ ...newCycle, window_close: e.target.value })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleCreateCycle}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-medium text-sm transition"
+              >
+                Create Cycle
+              </button>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="p-5 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800">All Cycles</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      {['Name', 'Phase', 'Window Open', 'Window Close', 'Status', 'Action'].map(h => (
+                        <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {cycles.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-6 text-center text-gray-400 text-sm">No cycles created yet.</td>
+                      </tr>
+                    )}
+                    {cycles.map(cycle => (
+                      <tr key={cycle.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{cycle.name}</td>
+                        <td className="px-4 py-3 text-gray-500">{cycle.phase}</td>
+                        <td className="px-4 py-3 text-gray-500">{cycle.window_open}</td>
+                        <td className="px-4 py-3 text-gray-500">{cycle.window_close}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            cycle.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {cycle.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => handleToggleCycle(cycle.id, cycle.is_active)}
+                            className={`text-xs px-3 py-1 rounded-lg border transition ${
+                              cycle.is_active
+                                ? 'border-gray-300 text-gray-500 hover:border-red-300 hover:text-red-500'
+                                : 'border-indigo-300 text-indigo-600 hover:bg-indigo-50'
+                            }`}
+                          >
+                            {cycle.is_active ? 'Deactivate' : 'Set Active'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ALL GOALS TAB */}
+        {activeTab === 'goals' && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">All Goals</h3>
+              <span className="text-xs text-gray-400">{goals.length} total</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['Employee', 'Dept', 'Thrust Area', 'Goal Title', 'Weightage', 'Status', 'Locked', 'Action'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {goals.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-6 text-center text-gray-400 text-sm">No goals found.</td>
+                    </tr>
+                  )}
+                  {goals.map(goal => {
+                    const employee = users.find(u => u.id === goal.employee_id)
+                    return (
+                      <tr key={goal.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{employee?.name || '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{employee?.department || '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{goal.thrust_area}</td>
+                        <td className="px-4 py-3 text-gray-700 max-w-[200px] truncate" title={goal.title}>{goal.title}</td>
+                        <td className="px-4 py-3 text-gray-500">{goal.weightage}%</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            goal.status === 'approved' ? 'bg-green-100 text-green-700'
+                            : goal.status === 'submitted' ? 'bg-yellow-100 text-yellow-700'
+                            : goal.status === 'rejected' ? 'bg-red-100 text-red-700'
+                            : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {goal.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {goal.locked
+                            ? <span className="flex items-center gap-1 text-xs text-orange-500"><Lock size={12} /> Locked</span>
+                            : <span className="flex items-center gap-1 text-xs text-gray-400"><Unlock size={12} /> Open</span>
+                          }
+                        </td>
+                        <td className="px-4 py-3">
+                          {goal.locked && (
+                            <button
+                              onClick={() => handleUnlockGoal(goal.id)}
+                              className="text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 px-2 py-1 rounded-lg transition"
+                            >
+                              Unlock
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* AUDIT LOG TAB */}
+        {activeTab === 'audit' && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800">Audit Log</h3>
+              <span className="text-xs text-gray-400">Last 50 changes</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    {['Time', 'Table', 'Record ID', 'Change Type', 'Changed By', 'Before', 'After'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {auditLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-6 text-center text-gray-400 text-sm">No audit logs found.</td>
+                    </tr>
+                  )}
+                  {auditLogs.map(log => {
+                    const changedBy = users.find(u => u.id === log.changed_by)
+                    return (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                          {new Date(log.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{log.table_name}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.record_id?.slice(0, 8)}…</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            log.change_type === 'update' ? 'bg-blue-100 text-blue-700'
+                            : log.change_type === 'insert' ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                          }`}>
+                            {log.change_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{changedBy?.name || log.changed_by?.slice(0, 8) || '—'}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs font-mono max-w-[120px] truncate" title={JSON.stringify(log.before_data)}>
+                          {JSON.stringify(log.before_data)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 text-xs font-mono max-w-[120px] truncate" title={JSON.stringify(log.after_data)}>
+                          {JSON.stringify(log.after_data)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* EXPORT REPORT TAB */}
+        {activeTab === 'report' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+              <h3 className="font-semibold text-gray-800 mb-1">Achievement Report</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Export all goals with quarterly actuals, scores and statuses for every employee.
+              </p>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                {[
+                  { label: 'Employees', value: totalEmployees },
+                  { label: 'Total Goals', value: totalGoals },
+                  { label: 'Approved', value: approvedGoals },
+                  { label: 'Check-in Records', value: checkins.length },
+                ].map(stat => (
+                  <div key={stat.label} className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-2xl font-bold text-indigo-600">{stat.value}</p>
+                    <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition"
+              >
+                <Download size={15} />
+                Download Excel Report
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )
